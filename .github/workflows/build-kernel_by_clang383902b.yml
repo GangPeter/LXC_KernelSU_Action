@@ -58,6 +58,9 @@ jobs:
         echo "ENABLE_KVM=$(cat $CONFIG_ENV | grep -w "ENABLE_KVM" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "DISABLE_FST=$(cat $CONFIG_ENV | grep -w "DISABLE_FST" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ENABLE_NETHUNTER=$(cat $CONFIG_ENV | grep -w "ENABLE_NETHUNTER" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "ENABLE_KALI=$(cat $CONFIG_ENV | grep -w "ENABLE_KALI" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_VERSION=$(cat $CONFIG_ENV | grep -w "KERNEL_VERSION" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "ENABLE_WIREGUARD=$(cat $CONFIG_ENV | grep -w "ENABLE_WIREGUARD" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         
     - name: Set swap to 10G
       uses: pierotofy/set-swap-space@master
@@ -177,12 +180,21 @@ jobs:
       if: env.ENABLE_NETHUNTER == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        git clone https://github.com/GangPeter/kali-nethunter_patches.git
-        patch -p1 < kali-nethunter_patches/patches/4.14/add-rtl8188eus-to-rtl8xxxu-drivers.patch
-        patch -p1 < kali-nethunter_patches/patches/4.14/add-rtl88xxau-5.6.4.2-drivers.patch
-        patch -p1 < kali-nethunter_patches/patches/4.14/add-wifi-injection-4.14.patch
-        patch -p1 < kali-nethunter_patches/patches/4.14/fix-ath9k-naming-conflict.patch
-        patch -p1 < kali-nethunter_patches/patches/4.14/fix-thread_info.h-compile-time-errors.patch
+        export KD=${{ env.KERNEL_CONFIG }}
+        export KV=${{ env.KERNEL_VERSION }}
+        export KV1=$(make kernelversion)
+        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        echo "        "
+        echo "-----此内核源码的内核版本为:$KV1--------------------------------"
+        echo "        "
+        echo "----当前你设置的内核版本（KERNEL_VERSION）KV值为:$KV----------------------"
+        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+        git clone https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-kernel.git kali-nethunter-kernel
+        git clone https://github.com/tomxi1997/kali-nethunter_patches.git patch
+        cp patch/Kali-Nethunter-plus-OPEN-CONFIG.sh .
+        cp patch/Kali-kernel-Patch.sh .
+        chmod +x *.sh
+        ./Kali-kernel-Patch.sh
         sleep 8
         git clone https://github.com/Biohazardousrom/Kali-defconfig-checker.git kali
         cd kali
@@ -190,6 +202,21 @@ jobs:
         chmod +x check-kernel-config
         ./check-kernel-config $GITHUB_WORKSPACE/kernel_workspace/android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }} -w
         
+    - name: Setup Wireguard
+      if: env.ENABLE_WIREGUARD == 'true' 
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "CONFIG_WIREGUARD=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        git clone https://kernel.googlesource.com/pub/scm/linux/kernel/git/zx2c4/wireguard-linux wireguard --depth=1
+        if [ -f $GITHUB_WORKSPACE/kernel_workspace/android-kernel/net/wireguard ]; then
+            mv net/wireguard net/wireguard-bak
+            mv wireguard ./net/
+        else
+            mv wireguard ./net/
+            sed -i "/^obj-\\\$(CONFIG_NETFILTER).*+=/a obj-\$(CONFIG_WIREGUARD) += wireguard/" "net/Makefile"
+            sed -i "/^if INET\$/a source \"net/wireguard/Kconfig\"" "net/Kconfig"
+        fi
+
     - name: Setup ccache
       if: env.ENABLE_CCACHE == 'true'
       uses: hendrikmuhs/ccache-action@v1.2
