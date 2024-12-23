@@ -55,6 +55,7 @@ jobs:
         echo "KSU_EXPECTED_SIZE=$(cat $CONFIG_ENV | grep -w "KSU_EXPECTED_SIZE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "KSU_EXPECTED_HASH=$(cat $CONFIG_ENV | grep -w "KSU_EXPECTED_HASH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ENABLE_LXC=$(cat $CONFIG_ENV | grep -w "ENABLE_LXC" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "ENABLE_KVM=$(cat $CONFIG_ENV | grep -w "ENABLE_KVM" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "DISABLE_FST=$(cat $CONFIG_ENV | grep -w "DISABLE_FST" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ENABLE_NETHUNTER=$(cat $CONFIG_ENV | grep -w "ENABLE_NETHUNTER" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         
@@ -134,6 +135,15 @@ jobs:
             sed -i "s/CONFIG_CC_STACKPROTECTOR_STRONG=y/# CONFIG_CC_STACKPROTECTOR_STRONG is not set/g" arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         fi
         
+    - name: Setup KVM
+      if: env.ENABLE_KVM == 'true'
+      run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+          echo "CONFIG_VIRTUALIZATION=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+          echo "CONFIG_KVM=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+          echo "CONFIG_VHOST_NET=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+          echo "CONFIG_VHOST_CROSS_ENDIAN_LEGACY=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+
     - name: Setup LXC
       if: env.ENABLE_LXC == 'true'
       run: |
@@ -167,11 +177,12 @@ jobs:
       if: env.ENABLE_NETHUNTER == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        git clone https://github.com/tomxi1997/kali-nethunter_patches.git
-        patch -p1 < kali-nethunter_patches/add-rtl88xxau-5.6.4.2-drivers.patch
-        patch -p1 < kali-nethunter_patches/add-wifi-injection-4.14.patch
-        #patch -p1 < kali-nethunter_patches/add-wifi-injection.patch
-        patch -p1 < kali-nethunter_patches/fix-ath9k-naming-conflict.patch
+        git clone https://github.com/GangPeter/kali-nethunter_patches.git
+        patch -p1 < kali-nethunter_patches/patches/4.14/add-rtl8188eus-to-rtl8xxxu-drivers.patch
+        patch -p1 < kali-nethunter_patches/patches/4.14/add-rtl88xxau-5.6.4.2-drivers.patch
+        patch -p1 < kali-nethunter_patches/patches/4.14/add-wifi-injection-4.14.patch
+        patch -p1 < kali-nethunter_patches/patches/4.14/fix-ath9k-naming-conflict.patch
+        patch -p1 < kali-nethunter_patches/patches/4.14/fix-thread_info.h-compile-time-errors.patch
         sleep 8
         git clone https://github.com/Biohazardousrom/Kali-defconfig-checker.git kali
         cd kali
@@ -226,8 +237,9 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         git clone https://github.com/osm0sis/AnyKernel3
+        sed -i 's!kernel.string=ExampleKernel by osm0sis @ xda-developers!kernel.string=Kernel by GangPeter!g' AnyKernel3/anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-        sed -i 's!block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!block=auto;!g' AnyKernel3/anykernel.sh
+        sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
         sed -i 's/is_slot_device=0;/is_slot_device=auto;/g' AnyKernel3/anykernel.sh
         cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
         if [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
